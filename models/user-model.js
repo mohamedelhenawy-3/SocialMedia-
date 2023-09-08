@@ -28,9 +28,16 @@ const UserSchema = new Schema(
       type: Date,
       required: true,
     },
-    profilePicture: {
-      type: String,
-      default: "", //empty string
+    profileimg: {
+      public_id: {
+        //
+        type: String,
+        default: " ",
+      },
+      url: {
+        type: String,
+        default: " ",
+      },
     },
     followers: {
       type: Array,
@@ -50,6 +57,14 @@ const UserSchema = new Schema(
         ref: "Post",
       },
     ],
+    resetPasswordToken: {
+      type: String,
+      default: null,
+    },
+    resetPasswordExpires: {
+      type: Date,
+      default: null,
+    },
     isAdmin: {
       type: Boolean,
       default: false,
@@ -61,9 +76,37 @@ const UserSchema = new Schema(
   }
 );
 
+const validateUser = (user) => {
+  const schema = Joi.object({
+    name: Joi.string().required().min(1).max(255),
+    city: Joi.string(),
+    from: Joi.string(),
+    birthdate: Joi.date().required(),
+    email: Joi.string()
+      .required()
+      .email({ minDomainSegments: 2, tlds: { allow: ["com", "net"] } }),
+    //assword must contain at least one letter ([A-Za-z]) and one digit (\\d), and must be at least 5 characters long ({5,}).
+    password: Joi.string()
+      .required()
+      .pattern(new RegExp("^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d]{5,}$")),
+
+    cloudinary_id: Joi.string(),
+    url: Joi.string(),
+    isAdmin: Joi.boolean(),
+    resetPasswordToken: Joi.string(),
+    resetPasswordExpires: Joi.date(),
+    createdAt: Joi.date(),
+  });
+
+  return schema.validate(user);
+};
+
 UserSchema.methods.generateAuthToken = function () {
   //return token idd and when admin it will return id and isAdmin:true
   return jwt.sign({ id: this._id, isAdmin: this.isAdmin }, "privateKey"); //returns token
 };
 
-module.exports = mongoose.model("User", UserSchema);
+module.exports = {
+  User: mongoose.model("User", userSchema),
+  validateUser: validateUser,
+};

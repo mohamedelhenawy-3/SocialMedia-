@@ -1,10 +1,9 @@
 const router = require("express").Router();
-const { Post, validate } = require("../models/posts-model");
+const Post = require("../models/posts-model");
+
 const User = require("../models/user-model");
 const auth = require("../middellware/auth-middlware");
-
-const imageController = require("../controllers/imagesController");
-
+const ErrorResponse = require("../utils/errorResponse");
 //router.get allm posts for one user
 router.get("/:userId", async (req, res) => {
   const user = await User.findById(req.params.userId).populate({
@@ -17,43 +16,42 @@ router.get("/:userId", async (req, res) => {
   res.status(200).json(user);
 });
 //get a post
-router.get("/:postId/:userId", [auth], async (req, res) => {
-  const user = await User.findById(req.params.userId).populate({
-    path: "posts",
-    populate: {
-      path: "images",
-      model: "Images",
-    },
-  });
-  const post = user.posts.map((pos) => {
-    if (pos._id == req.params.postId) return pos;
-  });
-  if (!post) {
-    return res.send("not found");
-  }
+router.get("/:postId/:userId", [auth], async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.userId).populate({
+      path: "posts",
+      populate: {
+        path: "images",
+        model: "Images",
+      },
+    });
+    const post = user.posts.map((pos) => {
+      if (pos._id == req.params.postId) return pos;
+    });
+    if (!post) {
+      return next(new ErrorResponse(`cant find this post`));
+    }
 
-  return res.send(post);
+    return res.send(post);
+  } catch (err) {
+    next(err);
+  }
 });
 
 //post posts
-router.post("/post/:userId", [auth], async (req, res) => {
-  const { error } = validateAgainstErrors(req.body);
-  if (error) return res.status(400).send(error.details[0].message);
-
-  if (!req.file) {
-    return res.status(400).send("Please provide an image !");
+router.post("/post/:userId", [auth], async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    const post = new Post({
+      content: req.body.content,
+      creator: user.name,
+    });
+    const uploadPost = await post.save();
+    await user.save();
+    res.send(uploadPost);
+  } catch (err) {
+    next(err);
   }
-  const user = await User.findById(req.params.userId);
-  const post = new Post({
-    content: req.body.content,
-    creator: user.name,
-  });
-  const image = await imageController.UploadImage(req.file.path);
-  post.images.push(image);
-  const uploadPost = await post.save();
-  user.posts.push(uploadPost);
-  await user.save();
-  res.send(uploadPost);
 });
 //update the post
 router.put("/:id", [auth], async (req, res) => {
@@ -71,7 +69,7 @@ router.put("/:id", [auth], async (req, res) => {
     new: true,
   });
   if (!agiza) {
-    res.send("cant update this post ");
+    return next(new ErrorResponse(`cant update this post`));
   }
   res.send(updatePosts);
 });
@@ -79,7 +77,6 @@ router.put("/:id", [auth], async (req, res) => {
 router.delete("/:id", [auth], async (req, res) => {
   const post = await Post.findById(req.params.id).populate("images");
   if (post.userId === req.body.userId) {
-    console.log("fuck");
     await post.deleteOne();
     res.status(200).json({ message: "delete successfully " });
   } else {
@@ -87,14 +84,31 @@ router.delete("/:id", [auth], async (req, res) => {
   }
 });
 //like a post...............
-router.put("/:id/like", [auth], async (req, res) => {
-  const post = await Post.findById(req.params.id);
-  if (!post.likes.includes(req.body.userId)) {
-    await post.updateOne({ $push: { likes: req.body.userId } });
-    res.status(200).send("like");
-  } else {
-    await post.updateOne({ $pull: { likes: req.body.userId } });
-    res.status(200).send("dislike");
+router.put("/:id/like", [auth], async (req, res, next) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post.likes.includes(req.body.userId)) {
+      await post.updateOne({ $push: { likes: req.body.userId } });
+      res.status(200).send("like");
+    } else {
+      await post.updateOne({ $pull: { likes: req.body.userId } });
+      res.status(200).send("dislike");
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+//get likes
+router.get("/likess/:Id", [auth], async (req, res, next) => {
+  try {
+    const post = await Post.findById(req.params.Id);
+    if (!post.likes) {
+      return res.status(200).json({ message: "0" });
+    }
+    res.status(200).json({ post });
+  } catch (err) {
+    next(err);
   }
 });
 //get a timeline
